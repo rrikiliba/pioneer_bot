@@ -1,0 +1,17 @@
+[package]
+name = "pioneer_bot"
+version = "1.0.0"
+edition = "2021"
+
+[dependencies]
+robotics_lib = { version = "*", registry = "kellnr" }
+robo_gui = { git = "https://github.com/Do-Not-Panic-Adv/Robo-GUI.git" }
+worldgen_unwrap = { version = "*", registry = "kellnr" }
+tile-resource-mapper-tool = { version = "*", registry = "kellnr" }
+pmp_collect_all = { version = "*", registry = "kellnr" }
+pmp_street_picasso = { version = "*", registry = "kellnr" }
+ohcrab_weather = { version = "*", registry = "kellnr" }
+spyglass = { version = "*", registry = "kellnr" }
+rustbeef_nlacompass = { version = "*", registry = "kellnr" }
+rand = "0.8.5"
+serialport = "4.3.0"
