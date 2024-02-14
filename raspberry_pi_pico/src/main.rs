@@ -44,8 +44,8 @@ fn main() -> ! {
         &mut pac.RESETS,
         &mut watchdog,
     )
-    .ok()
-    .unwrap();
+        .ok()
+        .unwrap();
     let mut delay = cortex_m::delay::Delay::new(core.SYST, clocks.system_clock.freq().to_Hz());
     let pins = gpio::Pins::new(pac.IO_BANK0, pac.PADS_BANK0, sio.gpio_bank0, &mut pac.RESETS);
     let mut adc = Adc::new(pac.ADC, &mut pac.RESETS);
@@ -68,10 +68,11 @@ fn main() -> ! {
 
     // button pins
     let confirm_button = pins.gpio12.into_pull_down_input();
-    let right_button = pins.gpio11.into_pull_down_input();
-    let left_button = pins.gpio10.into_pull_down_input();
-    let down_button = pins.gpio9.into_pull_down_input();
-    let up_button = pins.gpio8.into_pull_down_input();
+
+    let right_button = pins.gpio17.into_pull_down_input();
+    let left_button = pins.gpio14.into_pull_down_input();
+    let down_button = pins.gpio16.into_pull_down_input();
+    let up_button = pins.gpio15.into_pull_down_input();
 
     // potentiometer pin
     let mut wheel = AdcPin::new(pins.gpio28.into_floating_input());
@@ -242,7 +243,7 @@ fn main() -> ! {
                 // the msg read is telling the pico to do something,
                 // for now any negative value signals that the main program
                 // is ready to receive input
-                else if mode_select == 1 {
+                else {
                     allow_input = true;
                 }
             }
@@ -252,31 +253,32 @@ fn main() -> ! {
         if confirm_button.is_high().unwrap() && allow_input {
             if let Ok(_) = serial.write(&[select as u8]) {
                 led.set_high().unwrap();
-                if mode_select == 1 {
-                    allow_input = false
-                };
+                allow_input = false;
             }
         }
 
-        if mode_select == 0 {
-            if right_button.is_high().unwrap() {
-                if let Ok(_) = serial.write(&[6u8]) {
-                    led.set_high().unwrap();
-                }
-            } else if left_button.is_high().unwrap() {
-                if let Ok(_) = serial.write(&[7u8]) {
-                    led.set_high().unwrap();
-                }
-            } else if down_button.is_high().unwrap() {
-                if let Ok(_) = serial.write(&[8u8]) {
-                    led.set_high().unwrap();
-                }
-            } else if up_button.is_high().unwrap() {
-                if let Ok(_) = serial.write(&[9u8]) {
-                    led.set_high().unwrap();
-                }
+        if mode_select == 0 && allow_input && right_button.is_high().unwrap() {
+            allow_input = false;
+            if let Ok(_) = serial.write(&[6u8]) {
+                led.set_high().unwrap();
+            }
+        } else if mode_select == 0 && allow_input && left_button.is_high().unwrap() {
+            allow_input = false;
+            if let Ok(_) = serial.write(&[7u8]) {
+                led.set_high().unwrap();
+            }
+        } else if mode_select == 0 && allow_input && down_button.is_high().unwrap() {
+            allow_input = false;
+            if let Ok(_) = serial.write(&[8u8]) {
+                led.set_high().unwrap();
+            }
+        } else if mode_select == 0 && allow_input && up_button.is_high().unwrap() {
+            allow_input = false;
+            if let Ok(_) = serial.write(&[9u8]) {
+                led.set_high().unwrap();
             }
         }
+
 
         delay.delay_ms(10);
         led.set_low().unwrap();

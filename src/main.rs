@@ -13,11 +13,11 @@ fn main() {
     let _continue_ = std::rc::Rc::clone(&pioneer_bot.running);
     if let Ok(mut runner) = Runner::new(Box::new(pioneer_bot), &mut world_generator) {
         'game: loop {
-            std::thread::sleep(Duration::from_secs(1));
             if !*_continue_.borrow() {
                 break 'game;
             }
             let _ = runner.game_tick();
+            std::thread::sleep(Duration::from_secs(1));
         }
     }
 }

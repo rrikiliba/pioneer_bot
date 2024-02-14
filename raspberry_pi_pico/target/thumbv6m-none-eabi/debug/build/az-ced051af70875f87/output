@@ -1,6 +1,0 @@
-$ mkdir -p "C:\\Users\\Riki\\Code\\pioneer_bot\\raspberry_pi_pico\\target\\thumbv6m-none-eabi\\debug\\build\\az-ced051af70875f87\\out\\try_track_caller"
-$ cd "C:\\Users\\Riki\\Code\\pioneer_bot\\raspberry_pi_pico\\target\\thumbv6m-none-eabi\\debug\\build\\az-ced051af70875f87\\out\\try_track_caller"
-$ printf '%s' "// try_tra"... > "C:\\Users\\Riki\\Code\\pioneer_bot\\raspberry_pi_pico\\target\\thumbv6m-none-eabi\\debug\\build\\az-ced051af70875f87\\out\\try_track_caller\\try_track_caller.rs"
-$ "C:\\Users\\Riki\\.cargo\\bin\\rustc.exe" "try_track_caller.rs" "--emit=dep-info,metadata" >& /dev/null
-cargo:rustc-cfg=track_caller
-$ rm -r "C:\\Users\\Riki\\Code\\pioneer_bot\\raspberry_pi_pico\\target\\thumbv6m-none-eabi\\debug\\build\\az-ced051af70875f87\\out\\try_track_caller"

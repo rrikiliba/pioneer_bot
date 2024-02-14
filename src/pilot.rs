@@ -1,5 +1,5 @@
 use crate::pioneer_bot::Objective;
-use serialport::{ErrorKind, SerialPort};
+use serialport::{ClearBuffer, ErrorKind, SerialPort};
 use std::io;
 use std::io::{Read, Write};
 
@@ -27,6 +27,8 @@ impl Pilot {
                                     break;
                                 }
                             }
+
+                            println!("chosen {} mode", if buf[0] == 0 { "manual" } else { "assisted" });
 
                             return Pilot {
                                 manual: buf[0] == 0,
@@ -76,10 +78,31 @@ impl Pilot {
         self.manual
     }
 
+    // since the pico updates every 10 ms I needed to take some measures to
+    // inhibit double (or more) input
     pub fn get_action(&mut self) -> i8 {
         let mut buf = [0];
         match self.port.read(&mut buf) {
-            | Ok(_) => buf[0] as i8,
+            | Ok(_) => {
+                println!("input received");
+                // signal to the pico that the program is ready to receive input,
+                // this way buttons pressed when not needed aren't registered
+                // (signaled on the pico by the led not lighting up)
+                if self.port.write(&(-1f32).to_le_bytes()).is_ok() {
+                    // clear the port's buffer so that even pressing the button
+                    // slightly longer than needed doesn't result in a double input
+                    match self.port.clear(ClearBuffer::Input) {
+                        Ok(_) => {}
+                        Err(e) => {
+                            eprintln!("{:?}", e.kind);
+                        }
+                    }
+                    buf[0] as i8
+                } else {
+                    println!("Write error");
+                    -1
+                }
+            },
             | Err(e) => match e.kind() {
                 | io::ErrorKind::ConnectionAborted | io::ErrorKind::Interrupted => {
                     println!("Pilot disconnected.");
