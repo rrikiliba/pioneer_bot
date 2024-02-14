@@ -14,7 +14,7 @@ If that's not enough, at any point the user can intervene by plugging the
 raspberry pi pico (or any RP2040 board I suppose), programmed in rust to communicate 
 via USB serial with the main program and interact with it
 
-![image of the raspberry pi pico controller]()
+![image of the raspberry pi pico controller](raspberry_pi_pico/pics/remote.jpg)
 
 The code for the pico can be found in the [raspberry_pi_pico](raspberry_pi_pico/INSTRUCTIONS.md) folder.
 Upon plugging the device in, the user is prompted to choose between the following two modes:
@@ -32,13 +32,12 @@ collect user movement input, while the scroll wheel and confirmation button are 
 select special actions like placing the tent or destroying content. I'm a little new to this and I couldn't manage to fit
 them all on the same breadboard of the pico
 
-![image of the added buttons]()
+![image of the added buttons](raspberry_pi_pico/pics/controller.jpg)
 
 # Remarks
 
-- The folder [serial_test](serial_test) contains a couple tests I used to check the USB functionality
+- The folder [serial_test](serial_test) contains a couple of tests I used to check the USB functionality
 - I will bring the raspberry pi pico to the oral exam, but I will not take the additional breadboard to show the manual mode, as it's
-  - Not confirmed I will get it to work 100% (consider it a proof of concept in that case)
   - Really precarious to carry around as some of the components are loose
   - Difficult to set up on the spot 
   - Kind of boring overall, controlling the robot's movements could as easily be done via keyboard so I'd rather show off the other mode
