@@ -2545,6 +2545,7 @@ version = "1.0.0"
 dependencies = [
  "colored",
  "ohcrab_weather",
+ "oxagaudiotool",
  "pmp_collect_all",
  "pmp_street_picasso",
  "rand 0.8.5",
@@ -2887,7 +2888,7 @@ dependencies = [
 [[package]]
 name = "robo_gui"
 version = "0.1.0"
-source = "git+https://github.com/Do-Not-Panic-Adv/Robo-GUI.git#d4863be89fea9738f81938e3ef84e91245bee549"
+source = "git+https://github.com/Do-Not-Panic-Adv/Robo-GUI.git#e0a2c39d8ee2ec503d1ac0539671f760cc4237cb"
 dependencies = [
  "oxagaudiotool",
  "rand 0.8.5",

@@ -1,5 +1,5 @@
 use crate::pioneer_bot::Objective;
-use serialport::{ClearBuffer, ErrorKind, SerialPort};
+use serialport::{ErrorKind, SerialPort};
 use std::io;
 use std::io::{Read, Write};
 
@@ -84,39 +84,42 @@ impl Pilot {
         let mut buf = [0];
         match self.port.read(&mut buf) {
             | Ok(_) => {
-                println!("input received");
+                let mut input = buf[0] as i8;
                 // signal to the pico that the program is ready to receive input,
                 // this way buttons pressed when not needed aren't registered
                 // (signaled on the pico by the led not lighting up)
                 if self.port.write(&(-1f32).to_le_bytes()).is_ok() {
-                    // clear the port's buffer so that even pressing the button
-                    // slightly longer than needed doesn't result in a double input
-                    match self.port.clear(ClearBuffer::Input) {
-                        Ok(_) => {}
-                        Err(e) => {
-                            eprintln!("{:?}", e.kind);
-                        }
+
+                    // I tried everything but couldn't cancel out the double input,
+                    // so even though it's not good practice at all, I try to
+                    // ignore a subsequent equal input every time one is received
+                    if self.port.read(&mut buf).is_ok() && self.port.write(&(-2f32).to_le_bytes()).is_ok() {
+                        if input != buf[0] as i8 { input = buf[0] as i8 }
                     }
-                    buf[0] as i8
+
+                    // at first I was trying to clear the port's buffer after receiving the first input,
+                    // but this didn't seem to work
+                    // self.port.clear(ClearBuffer::Input);
                 } else {
-                    println!("Write error");
-                    -1
+                    eprintln!("Write error");
+                    input = -1;
                 }
-            },
-            | Err(e) => match e.kind() {
-                | io::ErrorKind::ConnectionAborted | io::ErrorKind::Interrupted => {
-                    println!("Pilot disconnected.");
-                    -1
+                input
+            }
+            | Err(e) => {
+                match e.kind() {
+                    | io::ErrorKind::ConnectionAborted | io::ErrorKind::Interrupted => {
+                        println!("Pilot disconnected.");
+                    }
+                    | io::ErrorKind::TimedOut => {
+                        println!("Pilot connection timed out.");
+                    }
+                    | e => {
+                        println!("{e}");
+                    }
                 }
-                | io::ErrorKind::TimedOut => {
-                    println!("Pilot connection timed out.");
-                    -1
-                }
-                | e => {
-                    println!("{e}");
-                    0
-                }
-            },
+                -1
+            }
         }
     }
 }

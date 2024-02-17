@@ -13,6 +13,7 @@ pmp_street_picasso = { version = "*", registry = "kellnr" }
 ohcrab_weather = { version = "*", registry = "kellnr" }
 spyglass = { version = "*", registry = "kellnr" }
 rustbeef_nlacompass = { version = "*", registry = "kellnr" }
+oxagaudiotool = {version="*", registry = "kellnr"}
 rand = "0.8.5"
 serialport = "4.3.0"
 colored = { version = "2.1.0", features = [] }

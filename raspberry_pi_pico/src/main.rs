@@ -69,10 +69,10 @@ fn main() -> ! {
     // button pins
     let confirm_button = pins.gpio12.into_pull_down_input();
 
-    let right_button = pins.gpio17.into_pull_down_input();
-    let left_button = pins.gpio14.into_pull_down_input();
-    let down_button = pins.gpio16.into_pull_down_input();
-    let up_button = pins.gpio15.into_pull_down_input();
+    let right_button = pins.gpio17.into_floating_input();
+    let left_button = pins.gpio14.into_floating_input();
+    let down_button = pins.gpio16.into_floating_input();
+    let up_button = pins.gpio15.into_floating_input();
 
     // potentiometer pin
     let mut wheel = AdcPin::new(pins.gpio28.into_floating_input());
@@ -187,11 +187,11 @@ fn main() -> ! {
     } else {
         [
             "Do Nothing",
-            "Deposit Gold",
-            "Sell Content",
-            "Place Road",
-            "Place Tent",
-            "Pick Up Content",
+            "Deposit",
+            "Sell",
+            "Spyglass",
+            "Tent",
+            "Destroy",
             "",
             "",
             "",
@@ -200,6 +200,7 @@ fn main() -> ! {
     };
 
     let mut allow_input = if mode_select == 1 { false } else { true };
+    let mut double_input_flag = false;
 
     loop {
         // read 10 consecutive values from the potentiometer and get the
@@ -232,12 +233,16 @@ fn main() -> ! {
         if usb.poll(&mut [&mut serial]) {
             let mut buf = [0u8; 4];
             if let Ok(_) = serial.read(&mut buf) {
-                led.set_high().unwrap();
-                display.clear().unwrap();
+
+                // notify the user that the robot is praying
+                if mode_select == 1 { led.set_high().unwrap(); }
+
+                // convert the read data
                 let msg = f32::from_le_bytes(buf);
 
                 // the msg read is the score
                 if msg >= 0f32 {
+                    display.clear().unwrap();
                     let _ = write!(display, "\nScore:\n{}", msg);
                 }
                 // the msg read is telling the pico to do something,
@@ -245,42 +250,45 @@ fn main() -> ! {
                 // is ready to receive input
                 else {
                     allow_input = true;
+                    if msg == -2f32 { double_input_flag = true; }
                 }
             }
         }
 
         // if the button is detected to be pressed and the main program is ready
-        if confirm_button.is_high().unwrap() && allow_input {
+        if allow_input && confirm_button.is_high().unwrap() {
             if let Ok(_) = serial.write(&[select as u8]) {
                 led.set_high().unwrap();
                 allow_input = false;
             }
         }
 
-        if mode_select == 0 && allow_input && right_button.is_high().unwrap() {
-            allow_input = false;
-            if let Ok(_) = serial.write(&[6u8]) {
-                led.set_high().unwrap();
-            }
-        } else if mode_select == 0 && allow_input && left_button.is_high().unwrap() {
-            allow_input = false;
-            if let Ok(_) = serial.write(&[7u8]) {
-                led.set_high().unwrap();
-            }
-        } else if mode_select == 0 && allow_input && down_button.is_high().unwrap() {
-            allow_input = false;
-            if let Ok(_) = serial.write(&[8u8]) {
-                led.set_high().unwrap();
-            }
-        } else if mode_select == 0 && allow_input && up_button.is_high().unwrap() {
-            allow_input = false;
-            if let Ok(_) = serial.write(&[9u8]) {
-                led.set_high().unwrap();
+        if mode_select == 0 {
+            if allow_input && right_button.is_high().unwrap() {
+                allow_input = false;
+                if let Ok(_) = serial.write(&[6u8]) {
+                    if !double_input_flag { led.set_high().unwrap(); }
+                }
+            } else if allow_input && left_button.is_high().unwrap() {
+                allow_input = false;
+                if let Ok(_) = serial.write(&[7u8]) {
+                    if !double_input_flag { led.set_high().unwrap(); }
+                }
+            } else if allow_input && down_button.is_high().unwrap() {
+                allow_input = false;
+                if let Ok(_) = serial.write(&[8u8]) {
+                    if !double_input_flag { led.set_high().unwrap(); }
+                }
+            } else if mode_select == 0 && allow_input && up_button.is_high().unwrap() {
+                allow_input = false;
+                if let Ok(_) = serial.write(&[9u8]) {
+                    if !double_input_flag { led.set_high().unwrap(); }
+                }
             }
         }
 
-
         delay.delay_ms(10);
         led.set_low().unwrap();
+        double_input_flag = false;
     }
 }
