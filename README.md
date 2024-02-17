@@ -56,6 +56,7 @@ them all on the same breadboard of the pico, apologies for the unnecessary size 
   - SDL2test.lib
   - SDL2.lib
   - SDL2_image.lib
+    
   and these are the files that need to be placed inside `pioneer_bot`
   - SDL2.dll
   - SDL2_image.dll
