@@ -2,18 +2,18 @@
 name = "pioneer_bot"
 version = "1.0.0"
 edition = "2021"
+authors = ["Riccardo Libanora - 226678"]
 
 [dependencies]
-robotics_lib = { version = "*", registry = "kellnr" }
-robo_gui = { git = "https://github.com/Do-Not-Panic-Adv/Robo-GUI.git" }
-worldgen_unwrap = { version = "*", registry = "kellnr" }
-tile-resource-mapper-tool = { version = "*", registry = "kellnr" }
-pmp_collect_all = { version = "*", registry = "kellnr" }
-pmp_street_picasso = { version = "*", registry = "kellnr" }
-ohcrab_weather = { version = "*", registry = "kellnr" }
-spyglass = { version = "*", registry = "kellnr" }
-rustbeef_nlacompass = { version = "*", registry = "kellnr" }
-oxagaudiotool = {version="*", registry = "kellnr"}
+robotics_lib = { version = "0.1.21", registry = "kellnr" }
+robo_gui = { git = "https://github.com/Do-Not-Panic-Adv/Robo-GUI.git", branch = "pioneer_bot" }
+worldgen_unwrap = { version = "0.1.5", registry = "kellnr" }
+tile-resource-mapper-tool = { version = "1.0.1", registry = "kellnr" }
+pmp_collect_all = { version = "0.1.4", registry = "kellnr" }
+ohcrab_weather = { version = "0.1.2", registry = "kellnr" }
+spyglass = { version = "0.1.2", registry = "kellnr" }
+rustbeef_nlacompass = { version = "0.2.1", registry = "kellnr" }
+oxagaudiotool = {version="0.2.0", registry = "kellnr"}
 rand = "0.8.5"
 serialport = "4.3.0"
 colored = { version = "2.1.0", features = [] }

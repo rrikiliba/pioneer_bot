@@ -64,5 +64,7 @@ them all on the same breadboard of the pico, apologies for the unnecessary size 
 
 # Issues
 - Sometimes the robot gets stuck when going to its destination. This is due to NLA compass not working properly, as we concluded whilst talking to the group that created it to try and fix it. I added some workarounds and checks, but they can only go so far in minimizing the issue
+- After gathering some content, especially Fish, the robot tries to collect more in the area with pmp_collect_all, but the tool gets stuck if the content is available in the area, but unreachable
+- The spyglass sometimes returns the wrong tiles, meaning if the robot is searching for content and it thinks it found it, it will move to the location it thinks it found it at, only to find nothing
 - When running the project, the startup time is considerable: this is due to the oxidizing agents' audio tool
   - The function `PioneerBot::new(gui_start: bool, audio_start: bool)` allows for both gui and sound effects to be disabled, if some quick testing is required

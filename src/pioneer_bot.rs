@@ -19,17 +19,15 @@ use robotics_lib::world::World;
 
 use another_one_bytes_the_dust_tile_resource_mapper_tool::tool::tile_mapper::TileMapper as Map;
 use ohcrab_weather::weather_tool::{WeatherPredictionTool as Forecast, WeatherToolError};
+use oxagaudiotool::OxAgAudioTool;
 use pmp_collect_all::CollectAll;
 use rustbeef_nlacompass::compass::{Destination, MoveError, NLACompass as Compass};
 use spyglass::spyglass::*;
-use oxagaudiotool::{OxAgAudioTool};
 
+use crate::pilot::Pilot;
+use crate::pioneer_bot::Objective::{Charging, Depositing, Exploring, Gathering, Moving, Praying, Selling, Sleeping, Waiting};
 use colored::{Color, Colorize};
 use oxagaudiotool::sound_config::OxAgSoundConfig;
-use crate::pilot::Pilot;
-use crate::pioneer_bot::Objective::{
-    Charging, Depositing, Exploring, Gathering, Moving, Praying, Selling, Sleeping, Waiting,
-};
 use robo_gui::MainState;
 use robotics_lib::utils::LibError;
 use robotics_lib::world::environmental_conditions::DayTime::Night;
@@ -87,12 +85,15 @@ pub struct PioneerBot<'a> {
     forecast: Forecast,
 
     audio: Option<OxAgAudioTool>,
+    sounds: Option<Vec<OxAgSoundConfig>>,
     gui: Option<MainState<'a>>,
+
     last_coords: Vec<(usize, usize)>,
     pub(crate) running: Rc<RefCell<bool>>,
 }
 
 impl PioneerBot<'_> {
+    // initialize the robot, you can choose to use gui, audio or both from src/main.rs
     pub fn new(gui_start: bool, audio_start: bool) -> Self {
         Self {
             robot: Default::default(),
@@ -110,17 +111,45 @@ impl PioneerBot<'_> {
 
             audio: if audio_start {
                 let mut audio_map = HashMap::new();
-                audio_map.insert(WeatherType::Sunny, OxAgSoundConfig::new_looped_with_volume("sounds\\WeatherType\\Sunny.mp3", 0.5));
-                audio_map.insert(WeatherType::Rainy, OxAgSoundConfig::new_looped_with_volume("sounds\\WeatherType\\Rainy.mp3", 0.5));
-                audio_map.insert(WeatherType::Foggy, OxAgSoundConfig::new_looped_with_volume("sounds\\WeatherType\\Foggy.mp3", 0.5));
-                audio_map.insert(WeatherType::TrentinoSnow, OxAgSoundConfig::new_looped_with_volume("sounds\\WeatherType\\Snow.mp3", 0.5));
-                audio_map.insert(WeatherType::TropicalMonsoon, OxAgSoundConfig::new_looped_with_volume("sounds\\WeatherType\\Monsoon.mp3", 0.5));
+                audio_map.insert(
+                    WeatherType::Sunny,
+                    OxAgSoundConfig::new_looped_with_volume("sounds\\WeatherType\\Sunny.mp3", 0.25),
+                );
+                audio_map.insert(
+                    WeatherType::Rainy,
+                    OxAgSoundConfig::new_looped_with_volume("sounds\\WeatherType\\Rainy.mp3", 0.25),
+                );
+                audio_map.insert(
+                    WeatherType::Foggy,
+                    OxAgSoundConfig::new_looped_with_volume("sounds\\WeatherType\\Foggy.mp3", 0.25),
+                );
+                audio_map.insert(
+                    WeatherType::TrentinoSnow,
+                    OxAgSoundConfig::new_looped_with_volume("sounds\\WeatherType\\Snow.mp3", 0.25),
+                );
+                audio_map.insert(
+                    WeatherType::TropicalMonsoon,
+                    OxAgSoundConfig::new_looped_with_volume("sounds\\WeatherType\\Monsoon.mp3", 0.25),
+                );
 
                 let mut event_map = HashMap::new();
-                event_map.insert(Event::RemovedFromBackpack(Content::None, 0), OxAgSoundConfig::new_with_volume("sounds\\Event\\Place.wav", 0.2));
-                event_map.insert(Event::AddedToBackpack(Content::None, 0), OxAgSoundConfig::new_with_volume("sounds\\Event\\PickUp.wav", 0.2));
+                event_map.insert(
+                    Event::AddedToBackpack(Content::None, 0),
+                    OxAgSoundConfig::new_with_volume("sounds\\Event\\Inventory.wav", 0.5),
+                );
 
                 OxAgAudioTool::new(event_map, Default::default(), audio_map).ok()
+            } else {
+                None
+            },
+            sounds: if audio_start {
+                let mut sounds = Vec::new();
+                sounds.push(OxAgSoundConfig::new_with_volume("sounds\\Effects\\objective.wav", 0.5));
+                sounds.push(OxAgSoundConfig::new_with_volume("sounds\\Effects\\oof.wav", 0.5));
+                sounds.push(OxAgSoundConfig::new_with_volume("sounds\\Effects\\coins.wav", 0.5));
+                sounds.push(OxAgSoundConfig::new_with_volume("sounds\\Effects\\quackable.wav", 0.5));
+                sounds.push(OxAgSoundConfig::new_with_volume("sounds\\Event\\Move.wav", 0.2));
+                Some(sounds)
             } else { None },
             gui: if gui_start {
                 Some(MainState::new(1).unwrap())
@@ -130,30 +159,46 @@ impl PioneerBot<'_> {
         }
     }
 
+    // wrapper function to get the coordinates directly as (usize, usize)
+    // for the sake of compatibility
     fn get_coordinate_usize(&self) -> (usize, usize) {
         let coordinate = self.get_coordinate();
         (coordinate.get_row(), coordinate.get_col())
     }
 
+    // sets the objective for the robot and logs it in the terminal
     pub(crate) fn set_objective(&mut self, objective: Objective) {
         self.objective = objective;
-        println!("{}", format!("New objective: {}", self.objective).color(Color::BrightYellow));
+        if let (Some(audio), Some(sounds)) = (self.audio.as_mut(), self.sounds.as_ref()) {
+            let _ = audio.play_audio(&sounds[0]);
+        }
+        println!(
+            "{}",
+            format!("New objective: {}", self.objective).color(Color::BrightYellow)
+        );
     }
 
+    // sets the next objective for the robot
     fn set_next(&mut self, objective: Objective) {
         self.next = objective
     }
 
+    // replaces the current objective with the next one
     fn next_objective(&mut self) {
-        self.objective = self.next.clone();
+        self.set_objective(self.next.clone());
         self.next = Objective::None;
     }
 
+    // collects the tent from the map
     fn retrieve_tent(&mut self, world: &mut World) {
-        // collect the tent
-        if let Some(direction) = self.face_target(world, true, |tile| if let Tent(_) = tile.content { true } else { false },) {
+        if let Some(direction) = self.face_target(
+            world,
+            true,
+            |tile| if let Tent(_) = tile.content { true } else { false },
+        ) {
+            println!("Tent is {direction:?}");
             if let Ok(_) = destroy(self, world, direction) {
-                println!("tent retrieved");
+                println!("Tent retrieved");
             }
         }
     }
@@ -167,66 +212,75 @@ impl PioneerBot<'_> {
         // if there is no tent in the inventory, it tries to craft one
         if current == 0 {
             if craft(self, Tent(0)).is_ok() {
-                println!("new tent crafted");
+                println!("New tent crafted");
             } else {
-                println!("need materials to craft a new tent");
+                println!("Need materials to craft a new tent");
                 println!("I'll just sleep here for today");
                 return Ok(());
             }
         }
 
         let direction = self.face_target(world, true, |tile| {
-            if let Content::None | Content::Tree(_) | Content::Rock(_) | Content::Coin(_) | Content::Fish(_) =
-                tile.content
-            {
-                tile.tile_type.properties().can_hold(&Tent(0)) && tile.tile_type.properties().walk()
-            } else {
-                false
-            }
+            tile.content == Content::None
+                && tile.tile_type.properties().can_hold(&Tent(0))
+                && tile.tile_type.properties().walk()
         });
 
-        println!("looking for a place to put the tent.. ");
+        println!("Looking for a place to put the tent.. ");
         // tries to place the tent in the obtained direction
         return if let Some(direction) = direction.as_ref() {
+            println!("Placing tent {direction:?}");
             match put(self, world, Tent(0), 1, direction.clone()) {
                 | Ok(_) => {
                     // if it managed to place the tent, it goes inside
                     let _ = go(self, world, direction.clone());
                     Ok(())
                 }
-                | Err(LibError::MustDestroyContentFirst) => {
-                    // if there is some content, break it and put the tent in its place
-                    let _ = destroy(self, world, direction.clone());
-                    let _ = put(self, world, Tent(0), 1, direction.clone());
-                    let _ = go(self, world, direction.clone());
-                    Ok(())
+                | Err(e) => {
+                    eprintln!("{e:?}");
+                    Err(())
                 }
-                | _ => Err(()),
             }
-        } else {
+        }
+
+        // finds a suitable location to place the tent otherwise
+        else {
             match Spyglass::new(
                 self.get_coordinate().get_row(),
                 self.get_coordinate().get_row(),
-                20,
+                3,
                 robot_map(world).unwrap().len(),
                 None,
                 false,
                 0.5,
-                |tile| tile.tile_type.properties().can_hold(&Tent(0)) && tile.tile_type.properties().walk(),
+                |tile| {
+                    tile.content == Content::None
+                        && tile.tile_type.properties().can_hold(&Tent(0))
+                        && tile.tile_type.properties().walk()
+                },
             )
                 .new_discover(self, world)
             {
-                | SpyglassResult::Complete | SpyglassResult::Paused | SpyglassResult::Failed(_) => {
-                    println!("I'll just sleep here");
-                    Ok(())
-                }
                 | SpyglassResult::Stopped(vec) => {
-                    println!("{}", format!("{:?} found at ({},{})", vec[0].0, vec[0].1, vec[0].2).color(Color::BrightGreen));
-                    self.compass
-                        .set_destination(Destination::Coordinate((vec[0].1, vec[0].2)));
-                    self.set_next(Sleeping);
-                    self.set_objective(Moving(false));
+
+                    // for some reason the spyglass will sometimes include tiles that do not match the criteria
+                    for (tile, row, col) in vec.iter() {
+                        if tile.content == Content::None
+                            && tile.tile_type.properties().walk()
+                            && tile.tile_type.properties().can_hold(&Tent(0)) {
+                            println!("{}", format!("Found a place to sleep at ({},{})", row, col).color(Color::BrightGreen));
+                            self.compass
+                                .set_destination(Destination::Coordinate((*row, *col)));
+                            self.set_next(Sleeping);
+                            self.set_objective(Moving(false));
+                            return Err(());
+                        }
+                    }
                     Err(())
+                }
+                | _ => {
+                    println!("I'll just sleep here for today");
+                    Ok(())
                 }
             }
         };
@@ -240,7 +294,6 @@ impl PioneerBot<'_> {
         // decide the precision (iterations of the loop) to apply to the search function
         // based on the map length
         let precision = random::<u32>() % dim.ilog2() + 1;
-        println!("precision: {precision}");
 
         // setup to find the least explored
         let mut target = (dim / 2, dim / 2);
@@ -248,7 +301,6 @@ impl PioneerBot<'_> {
         let mut min_quadrant = 0;
 
         for _ in 1..=precision {
-            println!("{}x{} quadrants", dim / 2, dim / 2);
             // setup 4 quadrants from the map
             //       |
             //    0  |  1
@@ -308,7 +360,6 @@ impl PioneerBot<'_> {
                     min_quadrant = i;
                 }
             }
-            println!("quadrant {min_quadrant} is the least explored");
 
             // finally set as target coordinate the coordinate in the center of the quadrant
             target.0 = match min_quadrant {
@@ -327,7 +378,7 @@ impl PioneerBot<'_> {
             map = quadrant[min_quadrant].clone();
         }
 
-        println!("random destination set: {:?}", target);
+        println!("Random destination set: {:?}", target);
         self.compass.set_destination(Destination::Coordinate(target));
         self.set_objective(Moving(false));
     }
@@ -348,7 +399,7 @@ impl PioneerBot<'_> {
                 self.compass
                     .set_destination(Destination::Coordinate(swap_coordinates(c.into())));
                 println!(
-                    "found the most {target_content} at {:?} in the map",
+                    "Found the most {target_content} at {:?} in the map",
                     swap_coordinates(c.into())
                 );
             } else {
@@ -360,12 +411,7 @@ impl PioneerBot<'_> {
         else if let Ok(c) = self.map.find_closest(world, self, target_content.clone()) {
             self.compass
                 .set_destination(Destination::Coordinate(swap_coordinates(c.into())));
-            println!("{}",
-                     format!(
-                         "found the closest {target_content} at {:?} in the map",
-                         swap_coordinates(c.into())
-                     ).color(Color::BrightGreen)
-            );
+            println!("{}", format!("Found the closest {target_content} at {:?} in the map", swap_coordinates(c.into())).color(Color::BrightGreen));
         } else {
             println!("{}", format!("{target_content} not found in the map").color(Color::BrightRed));
             self.set_objective(Exploring);
@@ -373,6 +419,7 @@ impl PioneerBot<'_> {
     }
 
     // if a target is present in the 9x9 around the robot, it makes sure the robot is actually facing it
+    // and returns the correct direction
     fn face_target<Target: Fn(&Tile) -> bool>(
         &mut self,
         world: &mut World,
@@ -446,57 +493,76 @@ impl PioneerBot<'_> {
         return None;
     }
 
+    // returns the coordinates of the next tile in the direction provided
     fn look_ahead(&self, direction: Direction) -> (usize, usize) {
         let (row, col) = self.get_coordinate_usize();
         match direction {
-            Up => (row - 1, col),
-            Down => (row + 1, col),
-            Left => (row, col - 1),
-            Right => (row, col + 1),
+            | Up => (row - 1, col),
+            | Down => (row + 1, col),
+            | Left => (row, col - 1),
+            | Right => (row, col + 1),
         }
     }
 
     // blindly walks towards the current destination
-    fn move_towards(&mut self, world: &mut World) {
-        if let Some(Destination::Coordinate((dest_row, dest_col))) =
-            *self.compass.get_destination()
-        {
+    // called when path finding fails
+    fn move_blindly(&mut self, world: &mut World) {
+        if let (Some(audio), Some(sounds)) = (self.audio.as_mut(), self.sounds.as_ref()) {
+            let _ = audio.play_audio(&sounds[1]);
+        } else {
+            println!("Following my heart and not my compass");
+        }
+
+        if let Some(Destination::Coordinate((dest_row, dest_col))) = *self.compass.get_destination() {
+
             // try to take between 2 and 8 steps  going blindly towards the destination
+            // (it will stop if it's stuck)
             let steps = random::<u8>() % 4 + 1;
             let (mut stuck_row, mut stuck_col) = (false, false);
-            println!("following my heart and not my compass");
             for _ in 1..=steps {
                 let (curr_row, curr_col) = self.get_coordinate_usize();
-                if curr_row < dest_row {
-                    if go(self, world, Down).is_err() {
-                        stuck_row = true;
-                    }
-                } else if curr_row > dest_row {
-                    if go(self, world, Up).is_err() {
-                        stuck_row = true;
-                    }
+                if let Err(MoveError::AlreadyAtDestination) = self.compass.get_move(&robot_map(world).unwrap(), self.get_coordinate_usize()) {
+                    break;
                 }
-                if curr_col < dest_col {
-                    if go(self, world, Right).is_err() {
-                        stuck_col = true;
-                    }
-                } else if curr_col > dest_col {
-                    if go(self, world, Left).is_err() {
-                        stuck_col = true;
+                if !stuck_row {
+                    if curr_row < dest_row {
+                        if go(self, world, Down).is_err() {
+                            stuck_row = true;
+                        }
+                    } else if curr_row > dest_row {
+                        if go(self, world, Up).is_err() {
+                            stuck_row = true;
+                        }
                     }
                 }
 
+                if let Err(MoveError::AlreadyAtDestination) = self.compass.get_move(&robot_map(world).unwrap(), self.get_coordinate_usize()) {
+                    break;
+                }
+                if !stuck_col {
+                    if curr_col < dest_col {
+                        if go(self, world, Right).is_err() {
+                            stuck_col = true;
+                        }
+                    } else if curr_col > dest_col {
+                        if go(self, world, Left).is_err() {
+                            stuck_col = true;
+                        }
+                    }
+                }
                 if stuck_row && stuck_col {
                     break;
                 } else {
-                    self.gui.as_mut().map(|gui| {
-                        gui.update_world(robot_map(world).unwrap());
-                    });
+                    self.gui.as_mut().map(|gui| { gui.update_world(robot_map(world).unwrap()); });
                 }
             }
-            self.compass.clear_destination();
-            self.compass
-                .set_destination(Destination::Coordinate((dest_row, dest_col)));
+
+            // refresh the destination
+            if self.compass.get_destination().is_some() {
+                self.compass.clear_destination();
+                self.compass
+                    .set_destination(Destination::Coordinate((dest_row, dest_col)));
+            }
         }
         // it should never get in here as I always use Destination::Coordinate when moving,
         // but just in case I am wrong set a random destination
@@ -512,6 +578,8 @@ impl PioneerBot<'_> {
         self.last_coords.push(self.get_coordinate_usize());
     }
 
+    // returns the best content to sell at the moment, based on quantity
+    // owned and price
     fn get_content_to_sell(&self) -> Content {
         let (mut max_content, mut max_cost) = (Content::None, 0usize);
 
@@ -546,6 +614,7 @@ impl PioneerBot<'_> {
                 self.set_objective(Sleeping);
             }
         }
+
         // check if energy level critical
         else if self.get_energy().get_energy_level() < 150 {
             match (&self.objective, &self.next) {
@@ -561,17 +630,21 @@ impl PioneerBot<'_> {
             // the robot is deciding what to do next
             // either on autopilot or by user choice
             | Praying => {
+
                 // remove any destination, which is no longer relevant
                 self.compass.clear_destination();
-                // retrieves the tent if it's not already in the inventory
-                if *self.get_backpack().get_contents().get(&Tent(0)).unwrap() == 0usize {
-                    self.retrieve_tent(world);
-                }
-
                 let mut pilot_objective = Objective::None;
+
                 if assisted {
+                    println!("Backpack :{:?}", self.get_backpack()
+                        .get_contents()
+                        .iter()
+                        .filter(|(_, val)| **val > 0)
+                        .collect::<HashMap<&Content, &usize>>());
+
                     // get the objective chosen by the pilot
                     if let Some(pilot) = self.pilot.as_mut() {
+                        std::thread::sleep(std::time::Duration::from_millis(500));
                         println!("{}", "Decide what to do now:".color(Color::BrightWhite));
                         pilot_objective = match pilot.get_objective() {
                             | Ok(o) => o,
@@ -583,38 +656,43 @@ impl PioneerBot<'_> {
                     }
                 }
 
+                if assisted && pilot_objective != Objective::None {
+                    // do what the pilot decided
+                    self.set_next(Objective::None);
+                    self.set_objective(pilot_objective);
+                }
+
                 // if there is no pilot, or they decided not to intervene,
                 // go on autopilot and let the AI decide what to do
-                if !assisted || pilot_objective == Objective::None {
+                else {
                     let weather = look_at_sky(world).get_weather_condition();
                     let next_weather = self.forecast.predict_from_time(0, 24);
 
-                    // if current weather is bad, try sleeping for the day
+                    // if current weather is bad, sleep for the day
                     if let WeatherType::TrentinoSnow | WeatherType::TropicalMonsoon = weather {
                         println!("The weather today is {weather:?}");
                         self.set_objective(Sleeping);
                     }
+
                     // if the weather for the next day is bad, move close to a town
                     else if let Ok(WeatherType::TrentinoSnow | WeatherType::TropicalMonsoon) = next_weather.as_ref() {
-                        self.set_objective(Moving(true));
                         println!("The weather tomorrow is {:?}", next_weather.as_ref().unwrap());
                         print!("Decided to reach shelter from tomorrow's storm and ");
                         if let Ok(c) = self.map.find_closest(world, self, Content::Building) {
                             println!("found some buildings");
-                            self.compass
-                                .set_destination(Destination::Coordinate(swap_coordinates(c.into())));
+                            self.set_objective(Moving(true));
+                            self.compass.set_destination(Destination::Coordinate(swap_coordinates(c.into())));
                         } else if let Ok(c) = self.map.find_closest(world, self, Content::Market(0)) {
                             println!("found a market");
-                            self.compass
-                                .set_destination(Destination::Coordinate(swap_coordinates(c.into())));
+                            self.set_objective(Moving(true));
+                            self.compass.set_destination(Destination::Coordinate(swap_coordinates(c.into())));
                         } else if let Ok(c) = self.map.find_closest(world, self, Content::Bank(0..0)) {
                             println!("found a bank");
-                            self.compass
-                                .set_destination(Destination::Coordinate(swap_coordinates(c.into())));
+                            self.set_objective(Moving(true));
+                            self.compass.set_destination(Destination::Coordinate(swap_coordinates(c.into())));
                         } else if let Ok(c) = self.map.find_closest(world, self, Content::Tree(0)) {
                             println!("found a tree");
-                            self.compass
-                                .set_destination(Destination::Coordinate(swap_coordinates(c.into())));
+                            self.compass.set_destination(Destination::Coordinate(swap_coordinates(c.into())));
                             self.set_objective(Moving(false));
                         } else {
                             println!("found none! to exploring then");
@@ -624,10 +702,11 @@ impl PioneerBot<'_> {
                         // wait till the night at the shelter
                         self.set_next(Waiting(Night));
                     }
+
                     // if the backpack is more than 80% full, go to the market and sell
                     else if self.get_backpack().get_contents().values().sum::<usize>()
-                        >= self.get_backpack().get_size() / 5 * 4
-                    {
+                        >= self.get_backpack().get_size() / 5 * 4 {
+
                         // select the item that would make the most money in the current held quantity
                         let sellable_content = self.get_content_to_sell();
 
@@ -646,10 +725,11 @@ impl PioneerBot<'_> {
                         };
                         self.set_best_destination(world, target_content.clone(), next_weather, true);
                     }
+
                     // if the backpack is less than 50% full, gather some content
                     else if self.get_backpack().get_contents().values().sum::<usize>()
-                        <= self.get_backpack().get_size() / 2
-                    {
+                        <= self.get_backpack().get_size() / 2 {
+
                         // select the item of which the robot holds less
                         let (mut min_content, mut min_quantity) = (Vec::new(), usize::MAX);
                         for (content, quantity) in self.get_backpack().get_contents().iter() {
@@ -668,8 +748,8 @@ impl PioneerBot<'_> {
                         if min_content.len() == 1 {
                             target_content = min_content[0].clone();
                         } else {
-                            let range = min_content.len();
                             // choose randomly if more than one have the same quantity
+                            let range = min_content.len();
                             target_content = min_content[random::<usize>() % range].clone();
                         }
 
@@ -677,27 +757,45 @@ impl PioneerBot<'_> {
                         self.set_next(Gathering(target_content.clone()));
                         self.set_best_destination(world, target_content.clone(), next_weather, false);
                     }
+
+                    // if the map is more than 90% explored and there is nothing left to do, end the game
+                    else if robot_map(world)
+                        .unwrap()
+                        .iter()
+                        .map(|row| {
+                            row.iter()
+                                .map(|option| if option.is_some() { 1 } else { 0 })
+                                .sum::<usize>()
+                        })
+                        .sum::<usize>()
+                        > robot_map(world).unwrap().len().pow(2) * 9 / 10 {
+                        println!("{}", "Congratulations, you beat the game!".color(Color::BrightYellow));
+                        println!("Your score: {}", self.score);
+                        self.handle_event(Event::Terminated);
+                    }
+
                     // if there is nothing else to do, explore
                     else {
                         println!("Decided to explore");
                         self.set_objective(Exploring);
                     }
                 }
-                // otherwise do what the pilot decided
-                else {
-                    self.set_next(Objective::None);
-                    self.set_objective(pilot_objective);
-                }
             }
 
             | Waiting(target_time) => {
                 println!(".");
+                std::thread::sleep(std::time::Duration::from_millis(100));
+
                 let current_time = look_at_sky(world).get_time_of_day();
                 if current_time == target_time {
                     if let DayTime::Morning = current_time {
                         println!("{}", "-> time to wake up!".color(Color::BrightYellow));
                     } else {
                         println!("{}", "-> finished waiting".color(Color::BrightCyan));
+                    }
+                    // retrieves the tent if it's not already in the inventory
+                    if *self.get_backpack().get_contents().get(&Tent(0)).unwrap() == 0usize {
+                        self.retrieve_tent(world);
                     }
                     self.next_objective();
                 }
@@ -721,7 +819,7 @@ impl PioneerBot<'_> {
                         && backpack.get_contents().values().sum::<usize>() < backpack.get_size()
                     {
                         if let Ok(_) = destroy(self, world, direction) {
-                            println!("picked up some supplies while moving");
+                            println!("Picked up some supplies while moving");
                         }
                     }
                 }
@@ -754,16 +852,15 @@ impl PioneerBot<'_> {
                         // intervene and manually move towards it as it might mean it's stuck
                         let next = self.look_ahead(direction.clone());
                         if self.last_coords.contains(&next) && random::<u8>() % 3 == 0 {
-                            self.move_towards(world);
+                            self.move_blindly(world);
                         }
 
-
                         if let Err(LibError::CannotWalk) = go(self, world, direction.clone()) {
-                            println!("can't go {direction:?} from here");
+                            println!("Can't go {direction:?} from here");
 
                             // if the robot is moving towards a content
                             if let Gathering(content) = self.next.clone() {
-                                println!("next I have to be {:?}", self.next);
+                                println!("Next I have to be {:?}", self.next);
 
                                 // checks if the content is actually right in front of it
                                 // (mostly happens in case of fish)
@@ -780,7 +877,7 @@ impl PioneerBot<'_> {
                                     self.next_objective();
                                 } else {
                                     // otherwise it needs to build a bridge to it
-                                    print!("building a road to the {content}..");
+                                    print!("Building a road to the {content}..");
                                     let mut i = 1;
                                     loop {
                                         print!(".");
@@ -838,12 +935,16 @@ impl PioneerBot<'_> {
                                     }
                                 }
                             }
-                            // if the robot was going to some specific coordinate, make it so
-                            // that it won't try to reach it again next tick
-                            else if let Some(Destination::Coordinate(c)) = self.compass.get_destination() {
-                                // if it's going there to get reach a town, mark it as reached anyway
-                                self.pins.insert(*c);
-                                self.next_objective();
+
+                            // if the robot is stuck, make it go back on its steps
+                            else {
+                                let oldest_saved_position = self.last_coords.first();
+                                let current_position = self.get_coordinate_usize();
+                                if let Some(coordinate) = oldest_saved_position {
+                                    self.compass.set_destination(Destination::Coordinate(*coordinate));
+                                    self.last_coords.clear();
+                                    self.last_coords.push(current_position);
+                                }
                             }
                         } else {
                             self.gui.as_mut().map(|gui| {
@@ -866,7 +967,7 @@ impl PioneerBot<'_> {
                             }
                             | MoveError::NotImplemented => msg = "what the f!#@??",
                         }
-                        println!("destination is {msg}");
+                        println!("Destination is {msg}");
                         self.next_objective();
 
                         // if the destination needs to be added to the pins, do so
@@ -885,7 +986,10 @@ impl PioneerBot<'_> {
 
             // the robot needs to charge up to a certain level
             | Charging(target_level) => {
-                println!("{}", format!("charge: {}/{target_level}", self.get_energy().get_energy_level()).color(Color::Cyan));
+                println!(
+                    "{}",
+                    format!("Charge: {}/{target_level}", self.get_energy().get_energy_level()).color(Color::Cyan)
+                );
                 // if the desired charge level is reached,
                 // decide what to do next
                 if self.get_energy().get_energy_level() >= target_level {
@@ -908,7 +1012,7 @@ impl PioneerBot<'_> {
                         },
                     ));
                 } else {
-                    println!("{}", "couldn't place the tent".color(Color::BrightRed))
+                    println!("{}", "Couldn't place the tent".color(Color::BrightRed))
                 }
             }
 
@@ -918,14 +1022,22 @@ impl PioneerBot<'_> {
                 // collect all seems not to collect the content you're directly standing on,
                 // and since the NLA compass takes you exactly on it, I need to move to face
                 // the content and then use collect all
-                if let Some(direction) = self.face_target(world, true, |tile| tile.content.to_default() == content.to_default()) {
+                if let Some(direction) =
+                    self.face_target(world, true, |tile| tile.content.to_default() == content.to_default()) {
                     let _ = destroy(self, world, direction);
                 }
 
-                // collect all content in the area
-                let mut requirements = HashMap::new();
-                requirements.insert(content.to_default(), 1);
-                CollectAll::collect_items(self, world, 5, requirements);
+                // collect more content in the area if there is enough space in the backpack
+                // also do not do it with fish because it will bug out greatly
+                if content.to_default() != Content::Fish(0)
+                    && self.get_backpack().get_contents().values().sum::<usize>() < self.get_backpack().get_size() * 4 / 5 {
+                    let mut requirements = HashMap::new();
+                    let space_left =
+                        self.get_backpack().get_size() - self.get_backpack().get_contents().values().sum::<usize>();
+                    requirements.insert(content.to_default(), space_left);
+                    println!("Collecting all {content} in the area");
+                    CollectAll::collect_items(self, world, 3, requirements);
+                }
 
                 let next_weather = self.forecast.predict_from_time(0, 24).unwrap_or(WeatherType::Sunny);
 
@@ -938,18 +1050,18 @@ impl PioneerBot<'_> {
                     // in order to move to the next closest area with the target content
                     if let Ok(c) = self.map.find_closest(world, self, content.clone()) {
                         let c = swap_coordinates(c.into());
-                        println!("found more {} at ({}, {})", content, c.0, c.1);
+                        println!("Found more {} at ({}, {})", content, c.0, c.1);
                         self.compass.set_destination(Destination::Coordinate(c));
                         self.set_objective(Moving(false));
                     } else {
-                        println!("no {} found in the vicinity, need to explore", content);
+                        println!("No {} found in the vicinity, need to explore", content);
                         self.set_objective(Exploring);
                     }
                     self.set_next(Gathering(content));
                 }
                 // otherwise go selling
                 else {
-                    println!("{}", "backpack too full, selling instead".color(Color::BrightRed));
+                    println!("{}", "Backpack too full, selling instead".color(Color::BrightRed));
 
                     let sellable_content = self.get_content_to_sell();
                     self.set_objective(Selling(sellable_content));
@@ -961,27 +1073,44 @@ impl PioneerBot<'_> {
             | Selling(content) => {
                 // look for market in the vicinity
                 match self.face_target(world, true,
-                                       |tile| {
-                                           if let Content::Market(n) = tile.content {
-                                               n > 0
-                                           } else { false }
-                                       }) {
+                                       |tile| { if let Content::Market(n) = tile.content { n > 0 } else { false } }) {
+                    // if there is no undepleted market nearby
                     | None => {
-                        if let Ok(c) = self.map.find_closest(world, self, Content::Market(0)) {
-                            self.compass
-                                .set_destination(Destination::Coordinate(swap_coordinates(c.into())));
-                            self.set_next(Selling(content));
-                            self.set_objective(Moving(true));
+                        if let Ok(c) = self.map.find_most_loaded(world, self, Content::Market(0)) {
+                            self.compass.set_destination(Destination::Coordinate(swap_coordinates(c.into())));
+                            let next_move = self.compass.get_move(&robot_map(world).unwrap(), self.get_coordinate_usize()).unwrap_or(Up);
+                            if self.look_ahead(next_move) == c.into() {
+                                // if the market flagged as most loaded is right in front of the robot, it's actually depleted, move on
+                                println!("{}", "No market found".color(Color::BrightRed));
+                                self.set_next(Selling(content));
+                                self.set_objective(Exploring);
+                            } else {
+                                println!("Market found at {:?}", swap_coordinates(c.into()));
+                                self.set_next(Selling(content));
+                                self.set_objective(Moving(true));
+                            }
                         } else {
                             println!("{}", "No market found".color(Color::BrightRed));
                             self.set_next(Selling(content));
                             self.set_objective(Exploring);
                         }
                     }
+                    // if the market is close to the robot
                     | Some(direction) => {
                         if let Some(quantity) = self.get_backpack().get_contents().get(&content) {
-                            let _ = put(self, world, content, *quantity, direction);
-                            self.next_objective();
+                            if let Ok(quantity) = put(self, world, content, *quantity, direction) {
+                                if quantity > 0 {
+                                    if let (Some(audio), Some(sounds)) = (self.audio.as_mut(), self.sounds.as_ref()) {
+                                        let _ = audio.play_audio(&sounds[2]);
+                                    }
+                                    self.next_objective();
+                                } else if let Ok(c) = self.map.find_most_loaded(world, self, Content::Market(0)) {
+                                    println!("Market depleted, new one found at {:?}", swap_coordinates(c.into()));
+                                    self.compass.set_destination(Destination::Coordinate(c.into()));
+                                    self.set_next(Depositing);
+                                    self.set_objective(Moving(true));
+                                }
+                            }
                         }
                     }
                 }
@@ -989,18 +1118,24 @@ impl PioneerBot<'_> {
 
             | Depositing => {
                 // look for bank
-                match self.face_target(world, true, |tile| {
-                    if let Content::Bank(_) = tile.content {
-                        true
-                    } else {
-                        false
-                    }
-                }) {
+                match self.face_target(world, true,
+                                       |tile| {
+                                           if let Content::Bank(range) = &tile.content { range.clone().sum::<usize>() != 0 } else { false }
+                                       }) {
                     | None => {
-                        if let Ok(c) = self.map.find_closest(world, self, Content::Bank(0..0)) {
+                        if let Ok(c) = self.map.find_most_loaded(world, self, Content::Bank(0..0)) {
                             self.compass.set_destination(Destination::Coordinate(c.into()));
-                            self.set_next(Depositing);
-                            self.set_objective(Moving(true));
+                            let next_move = self.compass.get_move(&robot_map(world).unwrap(), self.get_coordinate_usize()).unwrap_or(Up);
+                            if self.look_ahead(next_move) == c.into() {
+                                // if the bank flagged as most loaded is right in front of the robot, it's actually depleted, move on
+                                println!("{}", "No market found".color(Color::BrightRed));
+                                self.set_next(Depositing);
+                                self.set_objective(Exploring);
+                            } else {
+                                println!("Bank found at {:?}", swap_coordinates(c.into()));
+                                self.set_next(Depositing);
+                                self.set_objective(Moving(true));
+                            }
                         } else {
                             println!("{}", "No bank found".color(Color::BrightRed));
                             self.set_objective(Exploring);
@@ -1008,8 +1143,19 @@ impl PioneerBot<'_> {
                     }
                     | Some(direction) => {
                         if let Some(quantity) = self.get_backpack().get_contents().get(&Content::Coin(0)) {
-                            let _ = put(self, world, Content::Coin(0), *quantity, direction);
-                            self.next_objective();
+                            if let Ok(quantity) = put(self, world, Content::Coin(0), *quantity, direction) {
+                                if quantity > 0 {
+                                    if let (Some(audio), Some(sounds)) = (self.audio.as_mut(), self.sounds.as_ref()) {
+                                        let _ = audio.play_audio(&sounds[2]);
+                                    }
+                                    self.next_objective();
+                                } else if let Ok(c) = self.map.find_most_loaded(world, self, Content::Bank(0..0)) {
+                                    println!("Bank depleted, new one found at {:?}", swap_coordinates(c.into()));
+                                    self.compass.set_destination(Destination::Coordinate(c.into()));
+                                    self.set_next(Depositing);
+                                    self.set_objective(Moving(true));
+                                }
+                            }
                         }
                     }
                 }
@@ -1018,6 +1164,7 @@ impl PioneerBot<'_> {
             | Exploring => {
                 let dim = robot_map(world).unwrap().len();
                 let mut mark_visited = false;
+                let mut target_content = Vec::new();
 
                 // there probably was a better way to do this but
                 // doing something like
@@ -1030,13 +1177,41 @@ impl PioneerBot<'_> {
                 let mut stops_when: fn(&Tile) -> bool = |_| false;
                 if let Gathering(content) = &self.next {
                     match content {
-                        | Content::Rock(_) => stops_when = |tile| if let Content::Rock(_) = tile.content { true } else { false },
-                        | Content::Tree(_) => stops_when = |tile| if let Content::Tree(_) = tile.content { true } else { false },
-                        | Content::Fish(_) => stops_when = |tile| if let Content::Fish(_) = tile.content { true } else { false },
+                        | Content::Rock(_) => {
+                            stops_when = |tile| {
+                                if let Content::Rock(_) = tile.content {
+                                    true
+                                } else {
+                                    false
+                                }
+                            }
+                        }
+                        | Content::Tree(_) => {
+                            stops_when = |tile| {
+                                if let Content::Tree(_) = tile.content {
+                                    true
+                                } else {
+                                    false
+                                }
+                            }
+                        }
+                        | Content::Fish(_) => {
+                            stops_when = |tile| {
+                                if let Content::Fish(_) = tile.content {
+                                    true
+                                } else {
+                                    false
+                                }
+                            }
+                        }
                         | _ => {}
                     }
+                    target_content.push(content.clone());
                 } else {
                     mark_visited = true;
+                    target_content.push(Content::Bank(0..0));
+                    target_content.push(Content::Market(0));
+                    target_content.push(Content::Building);
                     stops_when = |tile| match tile.content {
                         | Content::Bank(_) | Content::Market(_) | Content::Building => true,
                         | _ => false,
@@ -1056,9 +1231,18 @@ impl PioneerBot<'_> {
 
                 let mut destination_found = false;
                 if let SpyglassResult::Stopped(vec) = spyglass.new_discover(self, world) {
+
+                    // for some reason the spyglass will sometimes include tiles that do not match the criteria
                     for (tile, row, col) in vec.iter() {
-                        if !mark_visited || (mark_visited && !self.pins.contains(&(*row, *col))) {
-                            println!("{}", format!("{} found at ({}, {})", tile.content, row, col).color(Color::BrightGreen));
+                        if !mark_visited
+                            || (mark_visited && !self.pins.contains(&(*row, *col)))
+                            && target_content.contains(&tile.content.to_default())
+                        {
+                            println!(
+                                "{}",
+                                format!("Found {} at ({}, {}) with my spyglass", tile.content, row, col)
+                                    .color(Color::BrightGreen)
+                            );
                             destination_found = true;
                             self.compass.set_destination(Destination::Coordinate((*row, *col)));
                             self.set_objective(Moving(mark_visited));
@@ -1085,7 +1269,10 @@ impl PioneerBot<'_> {
     }
 
     fn manual_pilot(&mut self, world: &mut World) {
-        println!("{}", format!("Energy: {}/1000", self.get_energy().get_energy_level()).color(Color::BrightCyan));
+        println!(
+            "{}",
+            format!("Energy: {}/1000", self.get_energy().get_energy_level()).color(Color::BrightCyan)
+        );
 
         if let Some(pilot) = self.pilot.as_mut() {
             match pilot.get_action() {
@@ -1156,15 +1343,21 @@ impl PioneerBot<'_> {
     }
 }
 
+
 impl Runnable for PioneerBot<'_> {
     fn process_tick(&mut self, world: &mut World) {
+        // add some delay if the gui is not in use
+        if self.gui.is_none() {
+            std::thread::sleep(std::time::Duration::from_millis(500));
+        }
+
         // try to reconnect the pilot, in case the pico got unplugged
         if self.pilot.is_none() {
             self.pilot = Pilot::new().ok();
         }
 
         match self.pilot.as_ref() {
-            Some(pilot) => {
+            | Some(pilot) => {
                 // if the pilot is manual, get the input action
                 if pilot.is_manual() {
                     self.manual_pilot(world);
@@ -1174,12 +1367,11 @@ impl Runnable for PioneerBot<'_> {
                     self.auto_pilot(world, true);
                 }
             }
-            None => {
+            | None => {
                 // there is no pilot: go full autopilot
                 self.auto_pilot(world, false)
             }
         }
-
 
         // update the gui
         self.gui.as_mut().map(|gui| {
@@ -1188,6 +1380,13 @@ impl Runnable for PioneerBot<'_> {
 
         // update the score
         self.score = get_score(world);
+
+        // easter egg
+        if random::<u32>() % 1000 == 0 {
+            if let (Some(audio), Some(sounds)) = (self.audio.as_mut(), self.sounds.as_ref()) {
+                let _ = audio.play_audio(&sounds[3]);
+            }
+        }
     }
 
     fn handle_event(&mut self, event: Event) {
@@ -1212,7 +1411,7 @@ impl Runnable for PioneerBot<'_> {
                 self.forecast.process_event(&Event::TimeChanged(e));
             }
             | Event::DayChanged(_) => {
-                println!("score: {}", self.score);
+                println!("Score: {}", self.score);
                 self.pilot.as_mut().map(|pilot| pilot.put_score(self.score));
             }
             | Event::EnergyRecharged(_) => {}
@@ -1230,14 +1429,23 @@ impl Runnable for PioneerBot<'_> {
                     }
                 }
                 self.last_coords.push(coords);
-                println!("-> Moved to {coords:?}")
+                println!("-> Moved to {coords:?}");
+                if let (Some(audio), Some(sounds)) = (self.audio.as_mut(), self.sounds.as_ref()) {
+                    let _ = audio.play_audio(&sounds[4]);
+                }
             }
             | Event::TileContentUpdated(_, _) => {}
             | Event::AddedToBackpack(content, quantity) => {
-                println!("{}", format!("-> {quantity} {content} added to backpack").color(Color::BrightCyan));
+                println!(
+                    "{}",
+                    format!("-> {quantity} {content} added to backpack").color(Color::BrightCyan)
+                );
             }
             | Event::RemovedFromBackpack(content, quantity) => {
-                println!("{}", format!("-> {quantity} {content} removed from backpack").color(Color::BrightMagenta));
+                println!(
+                    "{}",
+                    format!("-> {quantity} {content} removed from backpack").color(Color::BrightMagenta)
+                );
             }
         }
     }

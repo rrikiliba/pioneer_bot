@@ -28,7 +28,7 @@ impl Pilot {
                                 }
                             }
 
-                            println!("chosen {} mode", if buf[0] == 0 { "manual" } else { "assisted" });
+                            println!("Chose {} mode", if buf[0] == 0 { "manual" } else { "assisted" });
 
                             return Pilot {
                                 manual: buf[0] == 0,
@@ -89,12 +89,13 @@ impl Pilot {
                 // this way buttons pressed when not needed aren't registered
                 // (signaled on the pico by the led not lighting up)
                 if self.port.write(&(-1f32).to_le_bytes()).is_ok() {
-
                     // I tried everything but couldn't cancel out the double input,
                     // so even though it's not good practice at all, I try to
                     // ignore a subsequent equal input every time one is received
                     if self.port.read(&mut buf).is_ok() && self.port.write(&(-2f32).to_le_bytes()).is_ok() {
-                        if input != buf[0] as i8 { input = buf[0] as i8 }
+                        if input != buf[0] as i8 {
+                            input = buf[0] as i8
+                        }
                     }
 
                     // at first I was trying to clear the port's buffer after receiving the first input,

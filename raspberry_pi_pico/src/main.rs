@@ -257,9 +257,9 @@ fn main() -> ! {
 
         // if the button is detected to be pressed and the main program is ready
         if allow_input && confirm_button.is_high().unwrap() {
+            allow_input = false;
             if let Ok(_) = serial.write(&[select as u8]) {
                 led.set_high().unwrap();
-                allow_input = false;
             }
         }
 
