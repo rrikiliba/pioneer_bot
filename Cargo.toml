@@ -12,7 +12,7 @@ tile-resource-mapper-tool = { version = "1.0.1", registry = "kellnr" }
 pmp_collect_all = { version = "0.1.4", registry = "kellnr" }
 ohcrab_weather = { version = "0.1.2", registry = "kellnr" }
 spyglass = { version = "0.1.2", registry = "kellnr" }
-rustbeef_nlacompass = { version = "0.2.1", registry = "kellnr" }
+rustbeef_nlacompass = { version = "0.2.4", registry = "kellnr" }
 oxagaudiotool = {version="0.2.0", registry = "kellnr"}
 rand = "0.8.5"
 serialport = "4.3.0"

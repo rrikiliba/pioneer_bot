@@ -8,8 +8,8 @@ use worldgen_unwrap::public::WorldgeneratorUnwrap;
 
 // edit these to change settings
 const USE_WORLD_GEN_GUI: bool = false;
-const USE_GAME_GUI: bool = false;
-const USE_SOUND: bool = false;
+const USE_GAME_GUI: bool = true;
+const USE_SOUND: bool = true;
 
 
 fn main() {

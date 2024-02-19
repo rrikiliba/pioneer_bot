@@ -1,6 +1,5 @@
 use crate::pioneer_bot::Objective;
 use serialport::{ErrorKind, SerialPort};
-use std::io;
 use std::io::{Read, Write};
 
 // support struct in order to interface the main program with the raspberry pi pico
@@ -18,23 +17,20 @@ impl Pilot {
                     if let serialport::SerialPortType::UsbPort(_) = port.port_type {
                         print!("Connecting pilot to port {}...", port.port_name);
                         let builder = serialport::new(port.port_name, 115_200);
-                        return builder.open().map(|mut p| {
+                        if let Ok(mut p) = builder.open() {
                             println!("Pilot connected! choose mode:");
                             let mut buf = [0];
                             let _ = p.write(&[0u8]);
-                            loop {
-                                if p.read(&mut buf).is_ok() {
-                                    break;
-                                }
-                            }
 
-                            println!("Chose {} mode", if buf[0] == 0 { "manual" } else { "assisted" });
+                            if let Ok(_) = p.read(&mut buf) {
+                                println!("Chose {} mode", if buf[0] == 0 { "manual" } else { "assisted" });
 
-                            return Pilot {
-                                manual: buf[0] == 0,
-                                port: p,
-                            };
-                        });
+                                return Ok(Pilot {
+                                    manual: buf[0] == 0,
+                                    port: p,
+                                });
+                            } else { return Err(serialport::Error::new(ErrorKind::InvalidInput, "Disconnected before mode selection")); }
+                        };
                     }
                 }
                 return Err(serialport::Error::new(ErrorKind::NoDevice, "Input device not found"));
@@ -54,19 +50,11 @@ impl Pilot {
         // send the signal that an objective must be selected
         if let Ok(_) = self.port.write(&(-1.0f32).to_le_bytes()) {
             let mut buf = [0];
-            loop {
-                match self.port.read(&mut buf) {
-                    | Ok(_) => break Ok(Objective::from(buf[0])),
-                    | Err(e) => {
-                        match e.kind() {
-                            | io::ErrorKind::ConnectionAborted | io::ErrorKind::Interrupted => {
-                                println!("Pilot disconnected.")
-                            }
-                            | io::ErrorKind::TimedOut => println!("Pilot connection timed out."),
-                            | e => eprintln!("{e}"),
-                        }
-                        break Err(());
-                    }
+            match self.port.read(&mut buf) {
+                | Ok(_) => Ok(Objective::from(buf[0])),
+                | Err(_) => {
+                    println!("Pilot disconnected.");
+                    Err(())
                 }
             }
         } else {
@@ -107,18 +95,8 @@ impl Pilot {
                 }
                 input
             }
-            | Err(e) => {
-                match e.kind() {
-                    | io::ErrorKind::ConnectionAborted | io::ErrorKind::Interrupted => {
-                        println!("Pilot disconnected.");
-                    }
-                    | io::ErrorKind::TimedOut => {
-                        println!("Pilot connection timed out.");
-                    }
-                    | e => {
-                        println!("{e}");
-                    }
-                }
+            | Err(_) => {
+                println!("Pilot disconnected.");
                 -1
             }
         }
